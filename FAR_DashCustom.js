@@ -6,7 +6,8 @@
 // http://opensource.org/licenses/mit-license.php
 // ----------------------------------------------------------------------------
 // Version
-// 1.0.0 2020/06/12 カウント処理部分をオブジェクト指向的な記述に書き換え
+// 1.0.2 2020/06/12 独自のクラスを宣言＆処理をする形から、Game_Playerクラスに処理追加する形に変更
+// 1.0.1 2020/06/12 カウント処理部分をオブジェクト指向的な記述に書き換え
 // 1.0.0 2020/06/11 初版
 // ----------------------------------------------------------------------------
 // [Contact]   : https://github.com/minawa-3647
@@ -67,38 +68,38 @@
     var dSpeedVariableNo = getParamNumber(parameters['DashSpeedVariableNo']);
     var aFlag = getParamBoolean(parameters['AccelerationFlag']);
 
-    //大域変数宣言
-    var $farCount       = null;
+    //プラグイン内変数の設定
+    var dashCount = 0;
+    var dashSpeed = 0;
 
-    //宣言した大域変数のインスタンス生成
-    var _DataManager_createGameObjects = DataManager.createGameObjects;
-    DataManager.createGameObjects = function() {
-        var result = _DataManager_createGameObjects.call(this);
-        $farCount = new FAR_Count();
+    //=============================================================================
+    // Game_Player
+    //  ダッシュ時の加速度関連情報を追加定義します
+    //=============================================================================
+    var _Game_Player_initialize = Game_Player.prototype.initialize;
+    Game_Player.prototype.initialize = function() {
+        var result = _Game_Player_initialize.call(this);
+        this._countVal = 0;
+        return result;
+    };
+
+    var _Game_Player_moveByInput = Game_Player.prototype.moveByInput;
+    Game_Player.prototype.moveByInput = function() {
+        var result = _Game_Player_moveByInput.call(this);
+
+        dashCount = this.countController(100, 30);
 
         return result;
     };
 
-    //=============================================================================
-    // FAR_Count
-    //  カウント制御用クラス。自作クラスであり、コアスクリプト側クラスと関連なし
-    //=============================================================================
-    function FAR_Count() {
-        this.initialize.apply(this, arguments);
-    }
-
-    FAR_Count.prototype.initialize = function() {
-        this._countVal = 0;
-    };
-
-    //戻り値はコンストラクタで生成した_countValの現在値
-    //毎フレーム単位で呼び出され、呼び出されたときの_countValと引数をもとに、_countValの増減を行う
-    FAR_Count.prototype.countController = function(maxCount, switchCount) {
+    //プラグイン定義関数。戻り値はinitializeで生成される_countValの現在値
+    //毎フレーム単位で呼び出され、呼び出された際の_countValと引数をもとに、_countValの増減を行う
+    Game_Player.prototype.countController = function(maxCount, switchCount) {
         this.maxCount = maxCount;
         this.switchCount = switchCount;
     
         if($gameSwitches.value(cSwitchNo)){
-            if ($gamePlayer.isMoving() && $gamePlayer.isDashing()) {
+            if (this.isMoving() && this.isDashing()) {
                 if(this._countVal >= this.maxCount){
                     this._countVal = this.maxCount;
                 }
@@ -126,35 +127,21 @@
     };
 
 
-    //プラグイン内変数の設定
-    var dashCount = 0;
-    var dashSpeed = 0;
-
-    //=============================================================================
-    // Game_Player
-    //  コアスクリプト処理読み込み後に付け足し
-    //=============================================================================
-    var _Game_Player_moveByInput = Game_Player.prototype.moveByInput;
-    Game_Player.prototype.moveByInput = function() {
-        var result = _Game_Player_moveByInput.call(this);
-
-        dashCount = $farCount.countController(100, 30);
-
-        return result;
-    };
-
     //=============================================================================
     // Game_CharacterBase
-    //  スイッチによって、コアスクリプト通常処理とプラグイン処理が可変
+    //  移動時の速度を定義しているコアスクリプトの関数を改修
+    //  スイッチによって、コアスクリプトの通常処理とプラグイン処理が可変となるよう設定
     //=============================================================================
     var _Game_CharacterBase_realMoveSpeed = Game_CharacterBase.prototype.realMoveSpeed;
     Game_CharacterBase.prototype.realMoveSpeed = function() {
         if($gameSwitches.value(cSwitchNo)){
             dashSpeed = $gameVariables.value(dSpeedVariableNo);
             if(aFlag){
+                //速度および加速度、加速からの減速が有効になるver
                 return this._moveSpeed + (dashCount * 0.01) * dashSpeed;
             }
             else{
+                //コアスクリプト通常処理の速度のみ変わるver
                 return this._moveSpeed + (this.isDashing() ? dashSpeed : 0);
             }
         }
