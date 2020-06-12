@@ -6,6 +6,7 @@
 // http://opensource.org/licenses/mit-license.php
 // ----------------------------------------------------------------------------
 // Version
+// 1.0.0 2020/06/12 カウント処理部分をオブジェクト指向的な記述に書き換え
 // 1.0.0 2020/06/11 初版
 // ----------------------------------------------------------------------------
 // [Contact]   : https://github.com/minawa-3647
@@ -66,6 +67,65 @@
     var dSpeedVariableNo = getParamNumber(parameters['DashSpeedVariableNo']);
     var aFlag = getParamBoolean(parameters['AccelerationFlag']);
 
+    //大域変数宣言
+    var $farCount       = null;
+
+    //宣言した大域変数のインスタンス生成
+    var _DataManager_createGameObjects = DataManager.createGameObjects;
+    DataManager.createGameObjects = function() {
+        var result = _DataManager_createGameObjects.call(this);
+        $farCount = new FAR_Count();
+
+        return result;
+    };
+
+    //=============================================================================
+    // FAR_Count
+    //  カウント制御用クラス。自作クラスであり、コアスクリプト側クラスと関連なし
+    //=============================================================================
+    function FAR_Count() {
+        this.initialize.apply(this, arguments);
+    }
+
+    FAR_Count.prototype.initialize = function() {
+        this._countVal = 0;
+    };
+
+    //戻り値はコンストラクタで生成した_countValの現在値
+    //毎フレーム単位で呼び出され、呼び出されたときの_countValと引数をもとに、_countValの増減を行う
+    FAR_Count.prototype.countController = function(maxCount, switchCount) {
+        this.maxCount = maxCount;
+        this.switchCount = switchCount;
+    
+        if($gameSwitches.value(cSwitchNo)){
+            if ($gamePlayer.isMoving() && $gamePlayer.isDashing()) {
+                if(this._countVal >= this.maxCount){
+                    this._countVal = this.maxCount;
+                }
+                else if(this._countVal >= this.switchCount && this._countVal < this.maxCount){
+                    this._countVal += 2;
+                }
+                else{
+                    this._countVal++;
+                }
+            }
+            else{
+                if(this._countVal <= 0){
+                    this._countVal = 0;
+                }
+                else if(this._countVal > 0 && this._countVal <= this.switchCount){
+                    this._countVal -= 2;
+                }
+                else{
+                    this._countVal--;
+                }
+            }
+        }
+    
+        return this._countVal;
+    };
+
+
     //プラグイン内変数の設定
     var dashCount = 0;
     var dashSpeed = 0;
@@ -78,30 +138,7 @@
     Game_Player.prototype.moveByInput = function() {
         var result = _Game_Player_moveByInput.call(this);
 
-        if($gameSwitches.value(cSwitchNo)){
-            if (this.isMoving() && this.isDashing()) {
-                if(dashCount >= 100){
-                    dashCount = 100;
-                }
-                else if(dashCount >= 30 && dashCount < 100){
-                    dashCount += 2;
-                }
-                else{
-                    dashCount++;
-                }
-            }
-            else{
-                if(dashCount <= 0){
-                    dashCount = 0;
-                }
-                else if(dashCount > 0 && dashCount <= 30){
-                    dashCount -= 2;
-                }
-                else{
-                    dashCount--;
-                }
-            }
-        }
+        dashCount = $farCount.countController(100, 30);
 
         return result;
     };
