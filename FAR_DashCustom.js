@@ -6,6 +6,8 @@
 // http://opensource.org/licenses/mit-license.php
 // ----------------------------------------------------------------------------
 // Version
+// 1.1.0 2020/06/12 ダッシュの加減速率付与をプラグインコマンドから動的に切り替えられるよう変更
+// 1.0.3 2020/06/12 ダッシュの速度値の基本（通常ダッシュと等速）を1から10に変更（細かく設定できるように）
 // 1.0.2 2020/06/12 独自のクラスを宣言＆処理をする形から、Game_Playerクラスに処理追加する形に変更
 // 1.0.1 2020/06/12 カウント処理部分をオブジェクト指向的な記述に書き換え
 // 1.0.0 2020/06/11 初版
@@ -27,24 +29,24 @@
  * @type variable
  * @default 0
  * 
- * @param AccelerationFlag
- * @desc ダッシュに加減速率の概念を付与するフラグ
- * @type boolean
- * @default false
  * 
- * @help プラグインコマンドはありません。
+ * @help
  * 
  * ControlSwitchNo に指定したスイッチが ON のとき、プラグイン機能が有効になります。
  * ・ControlSwitchNoにスイッチの指定を行わない(既定値0のまま)場合、機能無効です。
  * ・指定したスイッチをOFFにした場合も、機能無効（通常のダッシュ処理となる）です。
  * 
  * DashSpeedVariableNo に指定した変数番号の値がダッシュ時の速度値となります。
- * ・値として1を指定すると通常のダッシュと等速、数値を増せば増すほど速くなります。
- * ・0で歩行時と同じ速度、たとえば重力の影響でダッシュ速度が変わるなどの演出が可能。
+ * ・値として10を指定すると通常のダッシュと等速、数値を増せば増すほど速くなります。
+ * ・0で歩行時と同じ速度。たとえば重力の影響でダッシュ速度が変わるなどの演出が可能。
+ * ・設定できる値の範囲は0～30です。
  * 
- * AccelerationFlag が true のとき、ダッシュに加減速率の要素が加わります。
+ * プラグインコマンド
+ * FAR_ACCELERATION_ON と入力＆実行すると、ダッシュに加減速率の要素が加わります。
  * ・ダッシュ開始直後は加速が鈍く、ダッシュ終了直後はまだ加速が残っている。
  * ・いわゆるスーパーマ〇オ的ダッシュと思っていただければそんな感じです。
+ * ・FAR_ACCELERATION_OFF で通常のダッシュ仕様に戻ります。
+ * 
  * 
  * 利用規約：
  * このプラグインはMITライセンスです。
@@ -66,11 +68,30 @@
     //パラメータを変数に設定
     var cSwitchNo = getParamNumber(parameters['ControlSwitchNo']);
     var dSpeedVariableNo = getParamNumber(parameters['DashSpeedVariableNo']);
-    var aFlag = getParamBoolean(parameters['AccelerationFlag']);
+    //var aFlag = getParamBoolean(parameters['AccelerationFlag']);
 
     //プラグイン内変数の設定
     var dashCount = 0;
     var dashSpeed = 0;
+    var accelerationFlag = false;
+
+    //=============================================================================
+    // Game_Interpreter
+    //  ダッシュに加速度の概念を付与するコマンドを追加定義します
+    //=============================================================================
+    var _Game_Interpreter_pluginCommand = Game_Interpreter.prototype.pluginCommand;
+    Game_Interpreter.prototype.pluginCommand = function (command, args) {
+        var result = _Game_Interpreter_pluginCommand.call(this, command, args);
+
+        if ((command || '').toUpperCase() === 'FAR_ACCELERATION_ON') {
+            accelerationFlag = true;
+        }
+        if ((command || '').toUpperCase() === 'FAR_ACCELERATION_OFF') {
+            accelerationFlag = false;
+        }
+
+        return result;
+    };
 
     //=============================================================================
     // Game_Player
@@ -98,7 +119,8 @@
         this.maxCount = maxCount;
         this.switchCount = switchCount;
     
-        if($gameSwitches.value(cSwitchNo)){
+        //ダッシュ中にAccelerationFlagをtrueにされた際、それまでの加速を引き継がせるため普段からカウントさせる
+        //if($gameSwitches.value(cSwitchNo)){
             if (this.isMoving() && this.isDashing()) {
                 if(this._countVal >= this.maxCount){
                     this._countVal = this.maxCount;
@@ -121,7 +143,7 @@
                     this._countVal--;
                 }
             }
-        }
+        //}
     
         return this._countVal;
     };
@@ -135,8 +157,14 @@
     var _Game_CharacterBase_realMoveSpeed = Game_CharacterBase.prototype.realMoveSpeed;
     Game_CharacterBase.prototype.realMoveSpeed = function() {
         if($gameSwitches.value(cSwitchNo)){
+
+            //速度の係数調整
             dashSpeed = $gameVariables.value(dSpeedVariableNo);
-            if(aFlag){
+            dashSpeed = (dashSpeed < 0 ? 0 : dashSpeed);
+            dashSpeed = (dashSpeed > 30 ? 30 : dashSpeed);
+            dashSpeed = dashSpeed * 0.1;
+
+            if(accelerationFlag){
                 //速度および加速度、加速からの減速が有効になるver
                 return this._moveSpeed + (dashCount * 0.01) * dashSpeed;
             }
